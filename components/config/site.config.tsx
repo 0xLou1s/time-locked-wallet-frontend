@@ -28,7 +28,7 @@ export const siteConfig: SiteConfig = {
   },
   socials: {
     github: {
-      href: "https://github.com/0xLou1s",
+      href: "https://github.com/0xLou1s/time-locked-wallet",
       icon: Github,
     },
     x: {

@@ -5,7 +5,7 @@ export default function HomeLayout({
 }) {
   return (
     <div className="relative flex min-h-screen flex-col">
-      <div className="flex-1 w-full max-w-5xl mx-auto px-2 lg:px-0">
+      <div className="flex-1 w-full max-w-6xl mx-auto px-2 lg:px-0">
         {children}
       </div>
     </div>

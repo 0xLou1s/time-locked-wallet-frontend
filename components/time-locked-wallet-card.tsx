@@ -22,21 +22,25 @@ import {
 import {
   Lock,
   Clock,
-  Coins,
-  Wallet,
-  Calendar,
-  AlertCircle,
   RefreshCw,
+  Unlock,
+  CheckCircle,
+  List,
 } from "lucide-react";
 import { useTimelockWallet } from "@/hook/use-timelock-wallet";
 import { MINIMUM_AMOUNTS } from "@/lib/constants";
+import Image from "next/image";
 
 // Custom Coin Icon component for SOL
 const CoinIcon = () => (
   <div className="flex items-center gap-2">
-    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center">
-      <span className="text-white text-xs font-bold">S</span>
-    </div>
+    <Image
+      src="/sol.svg"
+      alt="SOL"
+      width={24}
+      height={24}
+      className="w-6 h-6"
+    />
     <span>SOL</span>
   </div>
 );
@@ -86,8 +90,17 @@ export default function TimeLockedWalletCard() {
   const [loadingTimelocks, setLoadingTimelocks] = useState(false);
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<{ [key: string]: number }>({});
+  const [activeTab, setActiveTab] = useState<
+    "all" | "ready" | "waiting" | "withdrawn"
+  >("all");
 
-  // Fetch timelocks when wallet connects or component mounts
+  const categorizedTimelocks = {
+    all: timelocks,
+    ready: timelocks.filter((t) => t.isUnlocked && !t.isWithdrawn),
+    waiting: timelocks.filter((t) => !t.isUnlocked && !t.isWithdrawn),
+    withdrawn: timelocks.filter((t) => t.isWithdrawn),
+  };
+
   const fetchTimelocks = useCallback(async () => {
     if (!publicKey) return;
 
@@ -121,20 +134,19 @@ export default function TimeLockedWalletCard() {
             newCountdown[timelock.publicKey] = timeRemaining;
           } else {
             newCountdown[timelock.publicKey] = 0;
-            shouldRefresh = true; // Mark that we should refresh to check unlock status
+            shouldRefresh = true;
           }
         }
       });
 
       setCountdown(newCountdown);
 
-      // Auto-refresh when any timelock reaches 0
       if (shouldRefresh) {
         setTimeout(() => {
           fetchTimelocks();
-        }, 1000); // Wait 1 second then refresh
+        }, 1000);
       }
-    }, 1000); // Update every second
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [timelocks, fetchTimelocks]);
@@ -201,7 +213,7 @@ export default function TimeLockedWalletCard() {
         // Reset form
         setAmount("");
         setLockDuration("");
-        fetchTimelocks(); // Refresh timelocks after creation
+        fetchTimelocks();
       } else {
         toast.error("Failed to create SOL timelock", {
           description: "Please check your wallet balance and try again",
@@ -292,7 +304,7 @@ export default function TimeLockedWalletCard() {
                   placeholder="0.001"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="h-10 w-full pr-12"
+                  className="w-full pr-24"
                   min={MINIMUM_AMOUNTS.SOL}
                   step="0.001"
                 />
@@ -311,10 +323,10 @@ export default function TimeLockedWalletCard() {
               <div className="flex gap-2">
                 <Input
                   type="number"
-                  placeholder="1"
+                  placeholder="enter duration"
                   value={lockDuration}
                   onChange={(e) => setLockDuration(e.target.value)}
-                  className="h-10 w-full"
+                  className="w-full"
                   min="1"
                 />
                 <Select
@@ -323,7 +335,7 @@ export default function TimeLockedWalletCard() {
                     setDurationType(value)
                   }
                 >
-                  <SelectTrigger className="h-10 w-32">
+                  <SelectTrigger className="w-32">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -399,80 +411,169 @@ export default function TimeLockedWalletCard() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {timelocks.map((timelock) => (
-                  <div
-                    key={timelock.publicKey}
-                    className="flex items-center justify-between p-4 border rounded-lg"
+              <>
+                {/* Tabs */}
+                <div className="flex space-x-1 mb-4 p-1 bg-muted rounded-lg">
+                  <Button
+                    variant={activeTab === "all" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setActiveTab("all")}
+                    className="flex-1 h-8"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center">
-                        <span className="text-white text-sm font-bold">S</span>
-                      </div>
-                      <div>
-                        <p className="font-medium">{timelock.amount} SOL</p>
-                        <p className="text-sm text-muted-foreground">
-                          {timelock.isWithdrawn ? (
-                            <>
-                              <AlertCircle className="h-3 w-3 inline mr-1 text-gray-500" />
-                              Withdrawn{" "}
-                              {new Date(
-                                timelock.unlockTimestamp * 1000
-                              ).toLocaleDateString()}
-                            </>
-                          ) : timelock.isUnlocked ? (
-                            <>
-                              <AlertCircle className="h-3 w-3 inline mr-1 text-green-500" />
-                              Unlocked{" "}
-                              {new Date(
-                                timelock.unlockTimestamp * 1000
-                              ).toLocaleDateString()}
-                            </>
-                          ) : (
-                            <>
-                              <Clock className="h-3 w-3 inline mr-1" />
-                              Unlocks{" "}
-                              {new Date(
-                                timelock.unlockTimestamp * 1000
-                              ).toLocaleDateString()}
-                            </>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      {timelock.isUnlocked && !timelock.isWithdrawn ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleWithdraw(timelock.publicKey)}
-                          disabled={withdrawing === timelock.publicKey}
-                        >
-                          {withdrawing === timelock.publicKey ? (
-                            <>
-                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current mr-2" />
-                              Withdrawing...
-                            </>
-                          ) : (
-                            "Withdraw"
-                          )}
-                        </Button>
-                      ) : timelock.isWithdrawn ? (
-                        <span className="text-sm text-muted-foreground">
-                          Already Withdrawn
-                        </span>
-                      ) : (
-                        <CountdownTimer
-                          seconds={
-                            countdown[timelock.publicKey] ||
-                            timelock.timeRemaining
-                          }
+                    <List className="h-4 w-4 mr-2" />
+                    All ({timelocks.length})
+                  </Button>
+                  <Button
+                    variant={activeTab === "ready" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setActiveTab("ready")}
+                    className="flex-1 h-8"
+                  >
+                    <Unlock className="h-4 w-4 mr-2" />
+                    Ready ({categorizedTimelocks.ready.length})
+                  </Button>
+                  <Button
+                    variant={activeTab === "waiting" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setActiveTab("waiting")}
+                    className="flex-1 h-8"
+                  >
+                    <Clock className="h-4 w-4 mr-2" />
+                    Waiting ({categorizedTimelocks.waiting.length})
+                  </Button>
+                  <Button
+                    variant={activeTab === "withdrawn" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setActiveTab("withdrawn")}
+                    className="flex-1 h-8"
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Withdrawn ({categorizedTimelocks.withdrawn.length})
+                  </Button>
+                </div>
+
+                {/* Tab Content */}
+                <div className="space-y-4 max-h-80 overflow-y-auto pr-2">
+                  {categorizedTimelocks[activeTab].map((timelock) => (
+                    <div
+                      key={timelock.publicKey}
+                      className="flex items-center justify-between p-4 border rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Image
+                          src="/sol.svg"
+                          alt="SOL"
+                          width={40}
+                          height={40}
+                          className="w-10 h-10"
                         />
-                      )}
+                        <div>
+                          <p className="font-medium">{timelock.amount} SOL</p>
+                          <p className="text-sm text-muted-foreground">
+                            {timelock.isWithdrawn ? (
+                              <>
+                                <CheckCircle className="h-3 w-3 inline mr-1 text-gray-500" />
+                                Withdrawn{" "}
+                                {new Date(
+                                  timelock.unlockTimestamp * 1000
+                                ).toLocaleDateString()}
+                              </>
+                            ) : timelock.isUnlocked ? (
+                              <>
+                                <Unlock className="h-3 w-3 inline mr-1 text-green-500" />
+                                Unlocked{" "}
+                                {new Date(
+                                  timelock.unlockTimestamp * 1000
+                                ).toLocaleDateString()}
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="h-3 w-3 inline mr-1" />
+                                Unlocks{" "}
+                                {new Date(
+                                  timelock.unlockTimestamp * 1000
+                                ).toLocaleDateString()}
+                              </>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        {timelock.isUnlocked && !timelock.isWithdrawn ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleWithdraw(timelock.publicKey)}
+                            disabled={withdrawing === timelock.publicKey}
+                          >
+                            {withdrawing === timelock.publicKey ? (
+                              <>
+                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current mr-2" />
+                                Withdrawing...
+                              </>
+                            ) : (
+                              "Withdraw"
+                            )}
+                          </Button>
+                        ) : timelock.isWithdrawn ? (
+                          <span className="text-sm text-muted-foreground">
+                            Already Withdrawn
+                          </span>
+                        ) : (
+                          <CountdownTimer
+                            seconds={
+                              countdown[timelock.publicKey] ||
+                              timelock.timeRemaining
+                            }
+                          />
+                        )}
+                      </div>
                     </div>
+                  ))}
+                </div>
+
+                {/* Empty state for active tab */}
+                {categorizedTimelocks[activeTab].length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {activeTab === "all" && (
+                      <>
+                        <Lock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>No timelocks found</p>
+                        <p className="text-sm">
+                          Create a new SOL time lock to get started
+                        </p>
+                      </>
+                    )}
+                    {activeTab === "ready" && (
+                      <>
+                        <Unlock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>No timelocks ready to withdraw</p>
+                        <p className="text-sm">
+                          Check the Waiting tab for locked timelocks
+                        </p>
+                      </>
+                    )}
+                    {activeTab === "waiting" && (
+                      <>
+                        <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>No timelocks waiting</p>
+                        <p className="text-sm">
+                          All your timelocks are either ready or withdrawn
+                        </p>
+                      </>
+                    )}
+                    {activeTab === "withdrawn" && (
+                      <>
+                        <CheckCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>No withdrawn timelocks</p>
+                        <p className="text-sm">
+                          Withdraw from your ready timelocks to see them here
+                        </p>
+                      </>
+                    )}
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
