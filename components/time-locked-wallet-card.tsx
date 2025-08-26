@@ -43,7 +43,8 @@ const CoinIcon = () => (
 
 export default function TimeLockedWalletCard() {
   const { publicKey } = useWallet();
-  const { createSollock, getUserTimelocks, loading } = useTimelockWallet();
+  const { createSollock, getUserTimelocks, withdraw, loading } =
+    useTimelockWallet();
   const [amount, setAmount] = useState("");
   const [lockDuration, setLockDuration] = useState("");
   const [durationType, setDurationType] = useState<
@@ -51,6 +52,7 @@ export default function TimeLockedWalletCard() {
   >("hours");
   const [timelocks, setTimelocks] = useState<any[]>([]);
   const [loadingTimelocks, setLoadingTimelocks] = useState(false);
+  const [withdrawing, setWithdrawing] = useState<string | null>(null);
 
   // Fetch timelocks when wallet connects or component mounts
   const fetchTimelocks = useCallback(async () => {
@@ -146,6 +148,49 @@ export default function TimeLockedWalletCard() {
         description: errorMessage,
         duration: 6000,
       });
+    }
+  };
+
+  const handleWithdraw = async (timelockPublicKey: string) => {
+    if (!publicKey) {
+      toast.error("Wallet Not Connected", {
+        description: "Please connect your wallet first to withdraw",
+      });
+      return;
+    }
+
+    try {
+      setWithdrawing(timelockPublicKey);
+      console.log("Withdrawing from timelock:", timelockPublicKey);
+
+      const result = await withdraw(timelockPublicKey);
+
+      if (result?.success) {
+        console.log("Withdrawal successful:", result);
+        toast.success("Withdrawal Successful!", {
+          description: `Signature: ${result.signature.slice(
+            0,
+            8
+          )}...${result.signature.slice(-8)}`,
+          duration: 5000,
+        });
+        // Refresh timelocks after withdrawal
+        fetchTimelocks();
+      } else {
+        toast.error("Withdrawal Failed", {
+          description: "Please try again or check if the timelock is unlocked",
+        });
+      }
+    } catch (err) {
+      console.error("Failed to withdraw:", err);
+      const errorMessage =
+        err instanceof Error ? err.message : "Unknown error occurred";
+      toast.error("Withdrawal Failed", {
+        description: errorMessage,
+        duration: 6000,
+      });
+    } finally {
+      setWithdrawing(null);
     }
   };
 
@@ -300,7 +345,15 @@ export default function TimeLockedWalletCard() {
                       <div>
                         <p className="font-medium">{timelock.amount} SOL</p>
                         <p className="text-sm text-muted-foreground">
-                          {timelock.isUnlocked ? (
+                          {timelock.isWithdrawn ? (
+                            <>
+                              <AlertCircle className="h-3 w-3 inline mr-1 text-gray-500" />
+                              Withdrawn{" "}
+                              {new Date(
+                                timelock.unlockTimestamp * 1000
+                              ).toLocaleDateString()}
+                            </>
+                          ) : timelock.isUnlocked ? (
                             <>
                               <AlertCircle className="h-3 w-3 inline mr-1 text-green-500" />
                               Unlocked{" "}
@@ -321,10 +374,26 @@ export default function TimeLockedWalletCard() {
                       </div>
                     </div>
                     <div className="text-right">
-                      {timelock.isUnlocked ? (
-                        <Button size="sm" variant="outline">
-                          Withdraw
+                      {timelock.isUnlocked && !timelock.isWithdrawn ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleWithdraw(timelock.publicKey)}
+                          disabled={withdrawing === timelock.publicKey}
+                        >
+                          {withdrawing === timelock.publicKey ? (
+                            <>
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current mr-2" />
+                              Withdrawing...
+                            </>
+                          ) : (
+                            "Withdraw"
+                          )}
                         </Button>
+                      ) : timelock.isWithdrawn ? (
+                        <span className="text-sm text-muted-foreground">
+                          Already Withdrawn
+                        </span>
                       ) : (
                         <span className="text-sm text-muted-foreground">
                           {(() => {
