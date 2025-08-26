@@ -420,7 +420,7 @@ export default function TimeLockedWalletCard() {
                     onClick={() => setActiveTab("all")}
                     className="flex-1 h-8"
                   >
-                    <List className="h-4 w-4 mr-2" />
+                    <List className="h-4 w-4 mr-2 hidden sm:inline" />
                     All ({timelocks.length})
                   </Button>
                   <Button
@@ -429,7 +429,7 @@ export default function TimeLockedWalletCard() {
                     onClick={() => setActiveTab("ready")}
                     className="flex-1 h-8"
                   >
-                    <Unlock className="h-4 w-4 mr-2" />
+                    <Unlock className="h-4 w-4 mr-2 hidden sm:inline" />
                     Ready ({categorizedTimelocks.ready.length})
                   </Button>
                   <Button
@@ -438,7 +438,7 @@ export default function TimeLockedWalletCard() {
                     onClick={() => setActiveTab("waiting")}
                     className="flex-1 h-8"
                   >
-                    <Clock className="h-4 w-4 mr-2" />
+                    <Clock className="h-4 w-4 mr-2 hidden sm:inline" />
                     Waiting ({categorizedTimelocks.waiting.length})
                   </Button>
                   <Button
@@ -447,7 +447,7 @@ export default function TimeLockedWalletCard() {
                     onClick={() => setActiveTab("withdrawn")}
                     className="flex-1 h-8"
                   >
-                    <CheckCircle className="h-4 w-4 mr-2" />
+                    <CheckCircle className="h-4 w-4 mr-2 hidden sm:inline" />
                     Withdrawn ({categorizedTimelocks.withdrawn.length})
                   </Button>
                 </div>
