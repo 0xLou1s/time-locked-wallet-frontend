@@ -1,3 +1,4 @@
+import HowItWorkCard from "@/components/how-it-work-card";
 import Header from "@/components/layouts/header";
 import TimeLockedWalletCard from "@/components/time-locked-wallet-card";
 
@@ -7,6 +8,7 @@ export default function Home() {
       <div className="flex w-full flex-col gap-4 my-10 items-center">
         <Header />
         <TimeLockedWalletCard />
+        <HowItWorkCard />
       </div>
     </div>
   );
