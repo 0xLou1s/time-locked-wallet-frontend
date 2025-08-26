@@ -29,6 +29,7 @@ export interface TimelockInfo {
   isUnlocked: boolean;
   timeRemaining: number;
   tokenMint: PublicKey | null;
+  publicKey: string; 
 }
 
 export const useTimelockWallet = () => {
@@ -301,6 +302,7 @@ export const useTimelockWallet = () => {
         isUnlocked,
         timeRemaining,
         tokenMint: accountInfo.tokenMint,
+        publicKey: timelockAccount, // Add public key for reference
       };
     } catch (err) {
       setError("Failed to get timelock info");
@@ -354,10 +356,59 @@ export const useTimelockWallet = () => {
     }
   }, [publicKey, sendTransaction, connection, getProgram]);
 
+  // Get all timelock accounts for the current user
+  const getUserTimelocks = useCallback(async (): Promise<TimelockInfo[]> => {
+    if (!publicKey) {
+      return [];
+    }
+
+    try {
+      const program = getProgram();
+      if (!program) {
+        throw new Error("Failed to initialize program");
+      }
+
+      // Get all timelock accounts where the user is the creator
+      const timelockAccounts = await (program as any).account.timelockAccount.all([
+        {
+          memcmp: {
+            offset: 8, // Offset for creator field in the account data
+            bytes: publicKey.toBase58(),
+          },
+        },
+      ]);
+
+      const currentTimestamp = Math.floor(Date.now() / 1000);
+      
+      return timelockAccounts.map((account: any) => {
+        const accountInfo = account.account;
+        const isUnlocked = currentTimestamp >= accountInfo.unlockTimestamp.toNumber();
+        const timeRemaining = isUnlocked ? 0 : accountInfo.unlockTimestamp.toNumber() - currentTimestamp;
+
+        return {
+          creator: accountInfo.creator,
+          recipient: accountInfo.recipient,
+          amount: accountInfo.amount.toNumber() / LAMPORTS_PER_SOL,
+          unlockTimestamp: accountInfo.unlockTimestamp.toNumber(),
+          createdAt: accountInfo.createdAt.toNumber(),
+          isWithdrawn: accountInfo.isWithdrawn,
+          isUnlocked,
+          timeRemaining,
+          tokenMint: accountInfo.tokenMint,
+          publicKey: account.publicKey.toString(), // Add public key for reference
+        };
+      });
+    } catch (err) {
+      console.error("Failed to get user timelocks:", err);
+      return [];
+    }
+  }, [publicKey, getProgram]);
+
   return {
     createSollock,
     createTokenLock,
     getTimelockInfo,
+    getUserTimelocks,
     withdraw,
     loading,
     error,

@@ -1,62 +1,88 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "./ui/card";
-import { Clock, Lock, Unlock, Wallet, Timer } from "lucide-react";
-import { Label } from "./ui/label";
-import { Input } from "./ui/input";
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "./ui/select";
-import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
-import { Separator } from "./ui/separator";
+} from "@/components/ui/select";
+import {
+  Lock,
+  Clock,
+  Coins,
+  Wallet,
+  Calendar,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
 import { useTimelockWallet } from "@/hook/use-timelock-wallet";
-import { useWallet } from "@solana/wallet-adapter-react";
 import { MINIMUM_AMOUNTS } from "@/lib/constants";
+
+// Custom Coin Icon component for SOL
+const CoinIcon = () => (
+  <div className="flex items-center gap-2">
+    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center">
+      <span className="text-white text-xs font-bold">S</span>
+    </div>
+    <span>SOL</span>
+  </div>
+);
 
 export default function TimeLockedWalletCard() {
   const { publicKey } = useWallet();
-  const { createSollock, createTokenLock, loading, error, clearError } =
-    useTimelockWallet();
-
-  // Form state
+  const { createSollock, getUserTimelocks, loading } = useTimelockWallet();
   const [amount, setAmount] = useState("");
-  const [token, setToken] = useState<"SOL" | "USDC">("SOL");
   const [lockDuration, setLockDuration] = useState("");
   const [durationType, setDurationType] = useState<
-    "minutes" | "hours" | "days" | "weeks" | "months"
-  >("days");
+    "minutes" | "hours" | "days"
+  >("hours");
+  const [timelocks, setTimelocks] = useState<any[]>([]);
+  const [loadingTimelocks, setLoadingTimelocks] = useState(false);
 
-  // Mock data for UI display only
-  const mockLockedWallets = [
-    {
-      id: 1,
-      amount: "10.5",
-      token: "SOL",
-      unlockDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // 1 day from now
-    },
-    {
-      id: 2,
-      amount: "1000",
-      token: "USDC",
-      unlockDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago (unlocked)
-    },
-  ];
+  // Fetch timelocks when wallet connects or component mounts
+  const fetchTimelocks = useCallback(async () => {
+    if (!publicKey) return;
+
+    try {
+      setLoadingTimelocks(true);
+      const userTimelocks = await getUserTimelocks();
+      setTimelocks(userTimelocks);
+    } catch (error) {
+      console.error("Failed to fetch timelocks:", error);
+      toast.error("Failed to fetch timelocks", {
+        description: "Please try refreshing the page",
+      });
+    } finally {
+      setLoadingTimelocks(false);
+    }
+  }, [publicKey, getUserTimelocks]);
+
+  useEffect(() => {
+    if (publicKey) {
+      fetchTimelocks();
+    } else {
+      setTimelocks([]);
+    }
+  }, [publicKey, fetchTimelocks]);
 
   const handleCreateLock = async () => {
     if (!publicKey) {
-      alert("Please connect your wallet first");
+      toast.error("Wallet Not Connected", {
+        description: "Please connect your wallet first to create timelocks",
+      });
       return;
     }
 
@@ -64,68 +90,62 @@ export default function TimeLockedWalletCard() {
     const numDuration = parseInt(lockDuration);
 
     if (isNaN(numAmount) || isNaN(numDuration)) {
-      alert("Please enter valid amount and duration");
+      toast.error("Invalid Input", {
+        description: "Please enter valid amount and duration values",
+      });
       return;
     }
 
-    // Validate minimum amount
-    const minAmount =
-      token === "SOL" ? MINIMUM_AMOUNTS.SOL : MINIMUM_AMOUNTS.USDC;
-    if (numAmount < minAmount) {
-      alert(`Minimum amount for ${token} is ${minAmount}`);
+    // Validate minimum amount for SOL
+    if (numAmount < MINIMUM_AMOUNTS.SOL) {
+      toast.error("Amount Too Low", {
+        description: `Minimum amount for SOL is ${MINIMUM_AMOUNTS.SOL}`,
+      });
       return;
     }
 
     try {
-      console.log("Creating timelock with:", {
+      console.log("Creating SOL timelock with:", {
         amount: numAmount,
         duration: numDuration,
         durationType,
-        token,
+        token: "SOL",
         publicKey: publicKey.toString(),
       });
 
-      if (token === "SOL") {
-        const result = await createSollock(
-          numAmount,
-          numDuration,
-          durationType
-        );
-        if (result) {
-          console.log("SOL timelock created successfully:", result);
-          alert(
-            `SOL timelock created successfully! Account: ${result.timelockAccount}\nSignature: ${result.signature}`
-          );
-          // Reset form
-          setAmount("");
-          setLockDuration("");
-        } else {
-          alert("Failed to create SOL timelock");
-        }
+      const result = await createSollock(numAmount, numDuration, durationType);
+
+      if (result) {
+        console.log("SOL timelock created successfully:", result);
+        toast.success("SOL Timelock Created!", {
+          description: `Account: ${result.timelockAccount.slice(
+            0,
+            8
+          )}...${result.timelockAccount.slice(
+            -8
+          )}\nSignature: ${result.signature.slice(
+            0,
+            8
+          )}...${result.signature.slice(-8)}`,
+          duration: 5000,
+        });
+        // Reset form
+        setAmount("");
+        setLockDuration("");
+        fetchTimelocks(); // Refresh timelocks after creation
       } else {
-        const result = await createTokenLock(
-          numAmount,
-          numDuration,
-          durationType,
-          "USDC"
-        );
-        if (result) {
-          console.log("USDC timelock created successfully:", result);
-          alert(
-            `USDC timelock created successfully! Account: ${result.timelockAccount}`
-          );
-          // Reset form
-          setAmount("");
-          setLockDuration("");
-        } else {
-          alert("Failed to create USDC timelock");
-        }
+        toast.error("Failed to create SOL timelock", {
+          description: "Please check your wallet balance and try again",
+        });
       }
     } catch (err) {
       console.error("Failed to create timelock:", err);
       const errorMessage =
         err instanceof Error ? err.message : "Unknown error occurred";
-      alert(`Error creating timelock: ${errorMessage}`);
+      toast.error("Timelock Creation Failed", {
+        description: errorMessage,
+        duration: 6000,
+      });
     }
   };
 
@@ -143,253 +163,198 @@ export default function TimeLockedWalletCard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Lock className="h-5 w-5 text-primary" />
-              Create Time Lock
+              Create SOL Time Lock
             </CardTitle>
             <CardDescription>
-              Lock your SOL or USDC for a specified period. Funds will be secure
-              and withdrawable only after the unlock date.
+              Lock your SOL for a specified period. Funds will be secure until
+              the unlock time.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {error && (
-              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm">
-                {error}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearError}
-                  className="ml-2"
-                >
-                  ✕
-                </Button>
-              </div>
-            )}
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount</Label>
+          <CardContent className="space-y-4">
+            {/* Amount Input */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Amount (SOL)</label>
+              <div className="relative">
                 <Input
-                  id="amount"
                   type="number"
-                  placeholder="0.00"
+                  placeholder="0.001"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="font-mono w-full"
-                  min={
-                    token === "SOL" ? MINIMUM_AMOUNTS.SOL : MINIMUM_AMOUNTS.USDC
-                  }
+                  className="h-10 w-full pr-12"
+                  min={MINIMUM_AMOUNTS.SOL}
                   step="0.001"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Min:{" "}
-                  {token === "SOL" ? MINIMUM_AMOUNTS.SOL : MINIMUM_AMOUNTS.USDC}{" "}
-                  {token}
-                </p>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                  <CoinIcon />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="token">Token</Label>
-                <Select
-                  value={token}
-                  onValueChange={(value: "SOL" | "USDC") => setToken(value)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="SOL">SOL</SelectItem>
-                    <SelectItem value="USDC">USDC</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Minimum: {MINIMUM_AMOUNTS.SOL} SOL
+              </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="duration">Lock Duration</Label>
+            {/* Duration Input */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Duration</label>
+              <div className="flex gap-2">
                 <Input
-                  id="duration"
                   type="number"
                   placeholder="1"
                   value={lockDuration}
                   onChange={(e) => setLockDuration(e.target.value)}
-                  className="w-full"
+                  className="h-10 w-full"
                   min="1"
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="duration-type">Duration Type</Label>
                 <Select
                   value={durationType}
-                  onValueChange={(value: any) => setDurationType(value)}
+                  onValueChange={(value: "minutes" | "hours" | "days") =>
+                    setDurationType(value)
+                  }
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="h-10 w-32">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="minutes">Minutes</SelectItem>
                     <SelectItem value="hours">Hours</SelectItem>
                     <SelectItem value="days">Days</SelectItem>
-                    <SelectItem value="weeks">Weeks</SelectItem>
-                    <SelectItem value="months">Months</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
+            {/* Create Button */}
             <Button
               onClick={handleCreateLock}
-              disabled={!isFormValid || loading || !publicKey}
-              className="w-full"
-              size="lg"
+              disabled={!isFormValid || loading}
+              className="w-full h-10"
             >
               {loading ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
                   Creating...
                 </>
               ) : (
                 <>
                   <Lock className="h-4 w-4 mr-2" />
-                  Create Time Lock
+                  Create SOL Lock
                 </>
               )}
             </Button>
-
-            {!publicKey && (
-              <p className="text-center text-sm text-muted-foreground">
-                Connect your wallet to create a timelock
-              </p>
-            )}
           </CardContent>
         </Card>
 
-        {/* Locked Wallets */}
+        {/* Existing Time Locks */}
         <Card className="border-border">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-primary" />
-              Your Locked Wallets
-            </CardTitle>
-            <CardDescription>
-              View and manage your time-locked funds. Withdraw when the unlock
-              period expires.
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-primary" />
+                  Your Time Locks
+                </CardTitle>
+                <CardDescription>
+                  View and manage your existing time-locked SOL
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchTimelocks}
+                disabled={loadingTimelocks}
+                className="h-8 w-8 p-0"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${
+                    loadingTimelocks ? "animate-spin" : ""
+                  }`}
+                />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            {!publicKey ? (
+            {loadingTimelocks ? (
               <div className="text-center py-8 text-muted-foreground">
-                <Wallet className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Connect your wallet to view locked funds</p>
+                <RefreshCw className="h-12 w-12 mx-auto mb-4 animate-spin" />
+                <p>Loading your time locks...</p>
+              </div>
+            ) : timelocks.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Lock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No time locks created yet</p>
+                <p className="text-sm">
+                  Create your first SOL time lock to get started
+                </p>
               </div>
             ) : (
               <div className="space-y-4">
-                {mockLockedWallets.map((wallet, index) => {
-                  const isUnlocked = new Date() >= wallet.unlockDate;
-
-                  return (
-                    <div key={wallet.id}>
-                      <div className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-3">
-                            <div className="font-mono text-lg font-semibold">
-                              {wallet.amount} {wallet.token}
-                            </div>
-                            <Badge
-                              variant={isUnlocked ? "default" : "secondary"}
-                            >
-                              {isUnlocked ? (
-                                <>
-                                  <Unlock className="h-3 w-3 mr-1" /> Unlocked
-                                </>
-                              ) : (
-                                <>
-                                  <Lock className="h-3 w-3 mr-1" /> Locked
-                                </>
-                              )}
-                            </Badge>
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            Unlock Date:{" "}
-                            {wallet.unlockDate.toLocaleDateString()} at{" "}
-                            {wallet.unlockDate.toLocaleTimeString()}
-                          </div>
-                          {!isUnlocked && (
-                            <div className="text-sm text-muted-foreground">
-                              Time remaining: ~23 hours
-                            </div>
-                          )}
-                        </div>
-
-                        <Button
-                          disabled={!isUnlocked}
-                          variant={isUnlocked ? "default" : "secondary"}
-                          size="sm"
-                        >
-                          {isUnlocked ? (
+                {timelocks.map((timelock) => (
+                  <div
+                    key={timelock.publicKey}
+                    className="flex items-center justify-between p-4 border rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center">
+                        <span className="text-white text-sm font-bold">S</span>
+                      </div>
+                      <div>
+                        <p className="font-medium">{timelock.amount} SOL</p>
+                        <p className="text-sm text-muted-foreground">
+                          {timelock.isUnlocked ? (
                             <>
-                              <Unlock className="h-4 w-4 mr-2" />
-                              Withdraw
+                              <AlertCircle className="h-3 w-3 inline mr-1 text-green-500" />
+                              Unlocked{" "}
+                              {new Date(
+                                timelock.unlockTimestamp * 1000
+                              ).toLocaleDateString()}
                             </>
                           ) : (
                             <>
-                              <Lock className="h-4 w-4 mr-2" />
-                              Locked
+                              <Clock className="h-3 w-3 inline mr-1" />
+                              Unlocks{" "}
+                              {new Date(
+                                timelock.unlockTimestamp * 1000
+                              ).toLocaleDateString()}
                             </>
                           )}
-                        </Button>
+                        </p>
                       </div>
-                      {index < mockLockedWallets.length - 1 && (
-                        <Separator className="my-4" />
+                    </div>
+                    <div className="text-right">
+                      {timelock.isUnlocked ? (
+                        <Button size="sm" variant="outline">
+                          Withdraw
+                        </Button>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          {(() => {
+                            const timeRemaining = timelock.timeRemaining;
+                            if (timeRemaining < 60) {
+                              return `${timeRemaining} seconds left`;
+                            } else if (timeRemaining < 3600) {
+                              return `${Math.ceil(
+                                timeRemaining / 60
+                              )} minutes left`;
+                            } else if (timeRemaining < 86400) {
+                              return `${Math.ceil(
+                                timeRemaining / 3600
+                              )} hours left`;
+                            } else {
+                              return `${Math.ceil(
+                                timeRemaining / 86400
+                              )} days left`;
+                            }
+                          })()}
+                        </span>
                       )}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
         </Card>
       </div>
-
-      {/* Info Section */}
-      <Card className="mt-8 border-border">
-        <CardHeader>
-          <CardTitle>How It Works</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto">
-                <Lock className="h-6 w-6" />
-              </div>
-              <h3 className="font-semibold">Lock Funds</h3>
-              <p className="text-sm text-muted-foreground">
-                Deposit SOL or USDC into a secure time-locked account with your
-                chosen unlock date.
-              </p>
-            </div>
-            <div className="text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto">
-                <Timer className="h-6 w-6" />
-              </div>
-              <h3 className="font-semibold">Wait Period</h3>
-              <p className="text-sm text-muted-foreground">
-                Your funds are safely stored on-chain. Track the countdown until
-                your unlock date.
-              </p>
-            </div>
-            <div className="text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto">
-                <Unlock className="h-6 w-6" />
-              </div>
-              <h3 className="font-semibold">Withdraw</h3>
-              <p className="text-sm text-muted-foreground">
-                Once unlocked, withdraw your funds plus any earned rewards
-                directly to your wallet.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </main>
   );
 }
