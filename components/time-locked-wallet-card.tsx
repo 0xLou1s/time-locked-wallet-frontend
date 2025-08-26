@@ -41,6 +41,38 @@ const CoinIcon = () => (
   </div>
 );
 
+const CountdownTimer = ({ seconds }: { seconds: number }) => {
+  if (seconds <= 0)
+    return <span className="text-green-500 font-medium">Ready to unlock!</span>;
+
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (days > 0) {
+    return (
+      <span className="text-sm text-muted-foreground">
+        {days}d {hours}h {minutes}m {secs}s left
+      </span>
+    );
+  } else if (hours > 0) {
+    return (
+      <span className="text-sm text-muted-foreground">
+        {hours}h {minutes}m {secs}s left
+      </span>
+    );
+  } else if (minutes > 0) {
+    return (
+      <span className="text-sm text-muted-foreground">
+        {minutes}m {secs}s left
+      </span>
+    );
+  } else {
+    return <span className="text-sm text-muted-foreground">{secs}s left</span>;
+  }
+};
+
 export default function TimeLockedWalletCard() {
   const { publicKey } = useWallet();
   const { createSollock, getUserTimelocks, withdraw, loading } =
@@ -53,6 +85,7 @@ export default function TimeLockedWalletCard() {
   const [timelocks, setTimelocks] = useState<any[]>([]);
   const [loadingTimelocks, setLoadingTimelocks] = useState(false);
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<{ [key: string]: number }>({});
 
   // Fetch timelocks when wallet connects or component mounts
   const fetchTimelocks = useCallback(async () => {
@@ -71,6 +104,40 @@ export default function TimeLockedWalletCard() {
       setLoadingTimelocks(false);
     }
   }, [publicKey, getUserTimelocks]);
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (timelocks.length === 0) return;
+
+    const interval = setInterval(() => {
+      const now = Math.floor(Date.now() / 1000);
+      const newCountdown: { [key: string]: number } = {};
+      let shouldRefresh = false;
+
+      timelocks.forEach((timelock) => {
+        if (!timelock.isUnlocked && !timelock.isWithdrawn) {
+          const timeRemaining = timelock.unlockTimestamp - now;
+          if (timeRemaining > 0) {
+            newCountdown[timelock.publicKey] = timeRemaining;
+          } else {
+            newCountdown[timelock.publicKey] = 0;
+            shouldRefresh = true; // Mark that we should refresh to check unlock status
+          }
+        }
+      });
+
+      setCountdown(newCountdown);
+
+      // Auto-refresh when any timelock reaches 0
+      if (shouldRefresh) {
+        setTimeout(() => {
+          fetchTimelocks();
+        }, 1000); // Wait 1 second then refresh
+      }
+    }, 1000); // Update every second
+
+    return () => clearInterval(interval);
+  }, [timelocks, fetchTimelocks]);
 
   useEffect(() => {
     if (publicKey) {
@@ -395,26 +462,12 @@ export default function TimeLockedWalletCard() {
                           Already Withdrawn
                         </span>
                       ) : (
-                        <span className="text-sm text-muted-foreground">
-                          {(() => {
-                            const timeRemaining = timelock.timeRemaining;
-                            if (timeRemaining < 60) {
-                              return `${timeRemaining} seconds left`;
-                            } else if (timeRemaining < 3600) {
-                              return `${Math.ceil(
-                                timeRemaining / 60
-                              )} minutes left`;
-                            } else if (timeRemaining < 86400) {
-                              return `${Math.ceil(
-                                timeRemaining / 3600
-                              )} hours left`;
-                            } else {
-                              return `${Math.ceil(
-                                timeRemaining / 86400
-                              )} days left`;
-                            }
-                          })()}
-                        </span>
+                        <CountdownTimer
+                          seconds={
+                            countdown[timelock.publicKey] ||
+                            timelock.timeRemaining
+                          }
+                        />
                       )}
                     </div>
                   </div>
